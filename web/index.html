@@ -57,7 +57,7 @@
   .opix{position:relative;aspect-ratio:16/10;background:#04070b;overflow:hidden;border-bottom:1px solid var(--line-soft)}
   .opix video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#04070b}
   .opix .hud{position:absolute;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--accent);z-index:3;text-transform:uppercase}
-  .opix .hud.tl{top:11px;left:13px} .opix .hud.bl{bottom:11px;left:13px;color:rgba(244,245,246,.55)}
+  .opix .hud.tl{top:11px;left:13px} .opix .hud.tr{top:11px;right:13px;text-align:right;color:rgba(168,180,76,.85)} .opix .hud.bl{bottom:11px;left:13px;color:rgba(244,245,246,.55)}
   .opix .veil{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:8px;background:rgba(4,7,11,.72);text-align:center;padding:20px}
   .opix.live .veil{display:none} .veil .vt{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
@@ -114,6 +114,7 @@ const CONFIG = {
   SUPABASE_URL:      'https://YOUR-PROJECT-ref.supabase.co',
   SUPABASE_ANON_KEY: 'YOUR-ANON-KEY',
   FEED_WHEP:         'http://localhost:8889/thermal/whep',   // MediaMTX WHEP endpoint
+  TELEMETRY_WS:      'ws://localhost:8090',                  // telemetry bridge (Milestone 2)
 };
 /* ============================================================================= */
 
@@ -184,6 +185,7 @@ function renderConsole() {
       <div class="opix" id="opix">
         <video id="feed" autoplay muted playsinline></video>
         <div class="hud tl" id="hudTl">DFR // ${incident ? incident.ref : 'STANDBY'}</div>
+        <div class="hud tr" id="hudTr">TELEMETRY OFFLINE</div>
         <div class="hud bl">NO FACIAL RECOGNITION · OVERWATCH ONLY</div>
         <div class="veil" id="veil"><div class="vt">Awaiting callout</div>
           <div class="vb">Open a callout to bind the feed and start the record. Nothing is captured without an incident.</div></div>
@@ -194,12 +196,19 @@ function renderConsole() {
         <div class="icell"><div class="k">Location</div><div class="v" id="iLoc">—</div></div>
         <div class="icell"><div class="k">Status</div><div class="v" id="iStatus">—</div></div>
       </div>
+      <div class="incident" style="border-top:1px solid var(--line-soft)">
+        <div class="icell"><div class="k">Altitude</div><div class="v" id="tAlt">—</div></div>
+        <div class="icell"><div class="k">Battery</div><div class="v" id="tBatt">—</div></div>
+        <div class="icell"><div class="k">Ground spd</div><div class="v" id="tSpd">—</div></div>
+        <div class="icell"><div class="k">Mode</div><div class="v" id="tMode">—</div></div>
+      </div>
       <div class="controls">
         <button class="btn primary" id="bCall" ${canOpen ? '' : 'disabled'}>New callout</button>
         <button class="btn auth" id="bAuth" disabled>Authorise flight</button>
         <button class="btn" id="bFlag" disabled>Flag hazard</button>
         <button class="btn" id="bSeal" disabled>Seal &amp; close</button>
         <button class="btn" id="bFeed">Connect feed</button>
+        <button class="btn" id="bTelem">Connect telemetry</button>
         <button class="btn" id="bVerify" disabled title="Recompute the whole chain server-side">Verify record</button>
       </div>
     </div>
@@ -227,6 +236,7 @@ function renderConsole() {
   document.getElementById('bFlag').onclick = () => append('HAZARD FLAGGED', { hazard: 'Gas cylinder detected', to: 'Incident Commander' }, {});
   document.getElementById('bSeal').onclick = () => append('RECORD SEALED', { retention_days: 31, disclosure: 'pack ready' }, { gate: true, seals: true, then: 'sealed' });
   document.getElementById('bFeed').onclick = connectFeed;
+  document.getElementById('bTelem').onclick = connectTelemetry;
   document.getElementById('bVerify').onclick = runVerify;
   if (incident) loadIncidentUI();
 }
@@ -316,6 +326,37 @@ async function connectFeed() {
     if (!res.ok) throw new Error('WHEP ' + res.status + ' — is MediaMTX running with a /thermal feed?');
     const answer = await res.text(); await pc.setRemoteDescription({ type: 'answer', sdp: answer });
     if (incident) await append('RECORDING STARTED', { source: 'thermal', retention: '31 days', facial_recognition: 'none' }, {});
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---- telemetry (Milestone 2: bridge WebSocket) ---- */
+let telemWs, lastArmed = false;
+function connectTelemetry() {
+  try {
+    if (telemWs) { telemWs.close(); telemWs = null; }
+    telemWs = new WebSocket(CONFIG.TELEMETRY_WS);
+    telemWs.onopen = () => toast('Telemetry bridge connected');
+    telemWs.onerror = () => toast('Telemetry bridge unreachable — is it running?', true);
+    telemWs.onclose = () => { const h = document.getElementById('hudTr'); if (h) h.textContent = 'TELEMETRY OFFLINE'; };
+    telemWs.onmessage = (ev) => {
+      let t; try { t = JSON.parse(ev.data); } catch { return; }
+      if (t.type !== 'telemetry') return;
+      const g = id => document.getElementById(id);
+      const alt = t.altM == null ? '—' : Math.round(t.altM) + ' m';
+      const batt = t.battPct == null ? '—' : t.battPct + '%';
+      const spd = t.groundspeed == null ? '—' : t.groundspeed.toFixed(1) + ' m/s';
+      const mode = t.mode || (t.armed ? 'ARMED' : 'DISARMED');
+      if (g('tAlt')) g('tAlt').textContent = alt;
+      if (g('tBatt')) g('tBatt').textContent = batt;
+      if (g('tSpd')) g('tSpd').textContent = spd;
+      if (g('tMode')) g('tMode').textContent = mode;
+      const h = g('hudTr'); if (h) h.textContent = t.link === 'live' ? `${alt} · ${batt} · ${mode}` : 'TELEMETRY OFFLINE';
+      // governed milestone: first arm during an open incident → record DRONE AIRBORNE (commander only)
+      if (t.armed && !lastArmed && incident && ['commander', 'admin'].includes(profile.role)) {
+        append('DRONE AIRBORNE', { alt_m: t.altM, mode: t.mode, source: 'telemetry' }, {});
+      }
+      lastArmed = t.armed;
+    };
   } catch (e) { toast(e.message, true); }
 }
 

@@ -1,0 +1,13 @@
+{
+  "name": "warden-dfr-telemetry-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MAVLink -> console telemetry bridge (Milestone 2): consumes mavlink2rest, serves normalized telemetry over WebSocket.",
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
