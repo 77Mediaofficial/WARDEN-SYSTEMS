@@ -1,0 +1,18 @@
+# secrets & env — never commit
+.env
+.env.*
+*.local
+supabase/.env
+supabase/.temp/
+
+# supabase cli
+supabase/.branches/
+.supabase/
+
+# node / tooling
+node_modules/
+dist/
+.DS_Store
+
+# local config that carries keys (keep a .example instead)
+web/config.local.js
