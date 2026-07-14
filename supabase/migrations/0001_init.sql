@@ -2,8 +2,23 @@
 -- RBAC + incidents + APPEND-ONLY, HMAC-signed, hash-chained overwatch ledger + access log + retention.
 -- FORCE ROW LEVEL SECURITY from day one. Synthetic pilot data only — no real PII in v1.
 
-create extension if not exists pgcrypto;   -- gen_random_uuid()
+create extension if not exists pgcrypto;   -- gen_random_uuid(), gen_random_bytes()
 -- pg_cron is enabled from the dashboard (Database → Extensions) for retention; see README.
+
+-- ============================================================ signing secret (server-only)
+-- The ledger HMAC key lives here, generated in-DB (never in code, env, or the client).
+-- FORCE RLS + no policies => only the service_role (edge functions) can read it; clients denied.
+-- Hardening note: for a real pilot, move this to a managed secret / KMS rather than a DB row.
+create table app_secrets (
+  key        text primary key,
+  value      text not null,
+  created_at timestamptz not null default now()
+);
+alter table app_secrets enable row level security;
+alter table app_secrets force  row level security;
+insert into app_secrets(key, value)
+values ('ledger_secret', encode(gen_random_bytes(32), 'hex'))
+on conflict (key) do nothing;
 
 -- ============================================================ roles / profiles
 create type app_role as enum ('admin','commander','operator','viewer');

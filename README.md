@@ -31,8 +31,7 @@ thing a DPO/CFO actually needs to see.
 ```
 supabase/
   migrations/0001_init.sql        RBAC + incidents + append-only ledger + access log + retention (FORCE RLS)
-  functions/
-    _shared/hash.ts               SHA-256 + HMAC + deterministic canonical serialisation
+  functions/                      self-contained Deno fns; signing secret read from app_secrets (in-DB)
     incident-open/                open an incident + write the first ledger event (atomic)
     ledger-append/                append a signed, hash-chained event (server-mediated, role-checked)
     ledger-verify/                recompute the whole chain, return sealed | broken-at
@@ -51,8 +50,7 @@ supabase link --project-ref <your-new-warden-dfr-ref>
 # 2. apply the schema
 supabase db push                       # applies migrations/0001_init.sql
 
-# 3. set the ledger signing secret (NEVER shipped to the client)
-supabase secrets set LEDGER_SECRET="$(openssl rand -hex 32)"
+# 3. (the ledger signing secret is generated in-DB by the migration — no manual step)
 
 # 4. deploy the edge functions
 supabase functions deploy incident-open ledger-append ledger-verify

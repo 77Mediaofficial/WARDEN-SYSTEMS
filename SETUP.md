@@ -7,6 +7,24 @@ tamper-evident ledger. Parts B (thermal feed) and C (telemetry) are optional add
 
 ---
 
+## ✅ Backend already provisioned (WARDEN SYSTEMS · `bhzrnzsrqslmvcrreuro`, 2026-07-14)
+Done for you via the Supabase MCP: **schema applied** (5 tables, FORCE RLS, append-only ledger),
+**signing secret generated in-DB** (`app_secrets`, service-role-only — no env secret needed), **three
+edge functions deployed & armed** (return `401` = live), and the **anon key wired into
+`web/index.html`**. The console loads and shows the sign-in gate. All that's left is three quick things:
+
+1. **Allow-list the login redirect** — Dashboard → **Authentication → URL Configuration** →
+   Site URL `http://127.0.0.1:4291`, and add redirect `http://127.0.0.1:4291/web/index.html`.
+2. **Run + sign in:** `python -m http.server 4291 --bind 127.0.0.1` → open
+   `http://127.0.0.1:4291/web/index.html` → magic-link in with your email.
+3. **Get a commander role** — tell me you've signed in (with which email) and I'll set it, or run the
+   SQL in step 9 below yourself.
+
+Then **New callout → Authorise → Seal → Verify record** works end-to-end. Parts B/C add the live feed
+and telemetry. (The CLI steps below are the manual equivalent, kept for reference.)
+
+---
+
 ## Part A — Backend + console (the essential path, ~20 min)
 
 ### 1. Create the Supabase project
